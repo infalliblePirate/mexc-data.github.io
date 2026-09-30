@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NFP Second Charts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;600;700&family=Chivo+Mono:wght@400;500&display=swap">
+<script src="klinecharts.min.js"></script>
+<script src="data.js"></script>
+<style>
+/* Layout: one-screen trading terminal. Header with coin, a strip of release dates, chart fills the rest. Single dark look on purpose. */
+:root {
+  --bg: #0c0f12;
+  --panel: #12161b;
+  --line: #1f252c;
+  --fg: #e6e9ec;
+  --muted: #7d8793;
+  --gold: #d8b45a;
+  --up: #00b897;
+  --down: #f6465d;
+  --display: "Chivo", "Helvetica Neue", Arial, sans-serif;
+  --mono: "Chivo Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--fg); font: 14px/1.4 var(--display);
+  display: flex; flex-direction: column; padding-inline: 16px; box-sizing: border-box;
+}
+header { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding-block: 14px 12px; }
+h1 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: 0.01em; }
+h1 span { color: var(--muted); font-weight: 400; }
+.coins { display: flex; flex-wrap: wrap; gap: 6px; }
+.meta { margin-left: auto; color: var(--muted); font: 12px var(--mono); }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.coin {
+  padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-weight: 600;
+}
+.coin[aria-pressed="true"] { color: var(--bg); background: var(--gold); border-color: var(--gold); }
+.coin small { font: 12px var(--mono); margin-left: 4px; opacity: 0.8; }
+
+.dates { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.date {
+  text-align: left; padding: 10px 12px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line);
+  display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; min-width: 0;
+}
+.date:hover { border-color: #2c343d; }
+.date[aria-pressed="true"] { border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
+.date .d { font: 500 15px var(--mono); font-variant-numeric: tabular-nums; }
+.date .m { color: var(--muted); font-size: 12px; justify-self: end; align-self: center; text-transform: uppercase; letter-spacing: 0.06em; }
+.date .mv { grid-column: 1 / -1; font: 12px var(--mono); font-variant-numeric: tabular-nums; }
+.date .mv b { font-weight: 500; }
+.date .mv span { color: var(--muted); }
+.upc { color: var(--up); } .downc { color: var(--down); }
+
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding-block: 12px 8px; }
+.ruler {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px;
+  background: var(--panel); border: 1px solid var(--line); font-weight: 600;
+}
+.ruler[aria-pressed="true"] { border-color: var(--gold); color: var(--gold); }
+.ruler svg { width: 16px; height: 16px; }
+.hint { color: var(--muted); font-size: 12px; }
+.hint kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line); border-radius: 3px; color: var(--fg); }
+
+#chart { flex: 1; min-height: 380px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--bg); }
+footer { color: var(--muted); font-size: 12px; padding-block: 8px 14px; }
+
+@media (max-width: 720px) {
+  h1 span { display: block; font-size: 13px; }
+  .dates { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .date { padding: 8px 10px; grid-template-columns: 1fr; }
+  .date .d { font-size: 14px; }
+  .date .m { justify-self: start; font-size: 11px; }
+  .date .mv span { display: none; }
+  .meta { margin-left: 0; width: 100%; }
+  .hint .keys { display: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>NFP Second Charts <span>· US jobs report, 15:30 Kyiv</span></h1>
+  <div class="coins" id="coins"></div>
+  <div class="meta" id="meta"></div>
+</header>
+<div class="dates" id="dates"></div>
+<div class="bar">
+  <button class="ruler" id="ruler" aria-pressed="false" title="Measure (Shift or R)">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="5" width="13" height="6" rx="1" fill="none"/><path d="M4 5v2.5M6.5 5v1.5M9 5v2.5M11.5 5v1.5"/></svg>
+    Ruler
+  </button>
+  <button class="ruler" id="magnet" aria-pressed="true" title="Snap ruler points to candle open, high, low and close">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2.5v6a5 5 0 0 0 10 0v-6M3 5.5h3M10 5.5h3M6 2.5v6a2 2 0 0 0 4 0v-6"/></svg>
+    Magnet
+  </button>
+  <span class="hint"><span class="keys"><kbd>Shift</kbd> or <kbd>R</kbd>, then </span>click the start and end points<span class="keys"> · <kbd>Esc</kbd> clears</span></span>
+</div>
+<div id="chart"></div>
+<footer>MEXC perpetuals with 500x–1000x max leverage, 1-second candles from MEXC trades (via CoinAPI), built the way MEXC draws them. Volume is USDT turnover, as on MEXC. Times in Kyiv. The dashed line marks 15:30:00.</footer>
+
+<script>
+const UP = "#00b897", DOWN = "#f6465d", BLUE = "#2962ff";
+const $ = id => document.getElementById(id);
+const DATA = window.DATA;
+let coin = DATA.coins[0], date = DATA.dates[0];
+
+const fmt = (v, d = 2) => v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+const sign = (v, d = 2) => (v > 0 ? "+" : v < 0 ? "−" : "") + fmt(Math.abs(v), d);
+
+// first minute after the release: 15:30:00 open -> 15:30:59 close
+function firstMinute(c, d) {
+  const bars = c.days[d.date], i = bars.findIndex(b => b[0] === d.release);
+  if (i < 0) return null;
+  const m = bars.slice(i, i + 60);
+  const o = m[0][1], cl = m[m.length - 1][4];
+  return { o, c: cl, h: Math.max(...m.map(b => b[2])), l: Math.min(...m.map(b => b[3])), chg: cl - o, pct: (cl - o) / o * 100 };
+}
+
+// ---- ruler: TradingView-style measure (box, arrows, change / % / ticks, bars, time, volume)
+const measure = document.createElement("canvas").getContext("2d");
+measure.font = "12px 'Chivo Mono', monospace";
+const dur = s => { const m = Math.floor(s / 60), r = s % 60; return m ? (r ? `${m}m ${r}s` : `${m}m`) : `${r}s`; };
+const vol = v => v >= 1e6 ? fmt(v / 1e6, 3) + "M" : v >= 1e3 ? fmt(v / 1e3, 3) + "K" : fmt(v, 0);
+function arrow(from, to) {
+  const a = Math.atan2(to.y - from.y, to.x - from.x), l = 7;
+  return [{ x: to.x - l * Math.cos(a - 0.5), y: to.y - l * Math.sin(a - 0.5) }, to,
+          { x: to.x - l * Math.cos(a + 0.5), y: to.y - l * Math.sin(a + 0.5) }];
+}
+klinecharts.registerOverlay({
+  name: "ruler", totalStep: 3, needDefaultPointFigure: false, needDefaultXAxisFigure: true, needDefaultYAxisFigure: true,
+  createPointFigures: ({ overlay, coordinates, bounding }) => {
+    if (coordinates.length < 2) return [];
+    const [p1, p2] = overlay.points, [c1, c2] = coordinates;
+    const bars = chart.getDataList();
+    const idx = p => p.dataIndex ?? bars.findIndex(b => b.timestamp === p.timestamp);
+    const clamp = i => Math.max(0, Math.min(bars.length - 1, i));
+    const i1 = clamp(Math.min(idx(p1), idx(p2))), i2 = clamp(Math.max(idx(p1), idx(p2)));
+    const diff = p2.value - p1.value, up = diff >= 0, color = up ? BLUE : DOWN;
+    const n = idx(p2) - idx(p1);
+    const secs = Math.abs(bars[clamp(idx(p2))].timestamp - bars[clamp(idx(p1))].timestamp) / 1000;
+    let v = 0;
+    for (let i = i1; i <= i2; i++) v += bars[i].volume;
+    const lines = [
+      `${diff < 0 ? "-" : ""}${fmt(Math.abs(diff), coin.decimals)} (${diff < 0 ? "-" : ""}${fmt(Math.abs(diff / p1.value * 100))}%) , ${Math.round(diff / coin.tick)}`,
+      `${n} bars, ${dur(secs)}`,
+      `Vol ${vol(v)}`,
+    ];
+    const w = Math.max(...lines.map(l => measure.measureText(l).width)) + 28, h = lines.length * 19 + 14;
+    const midX = (c1.x + c2.x) / 2, midY = (c1.y + c2.y) / 2;
+    // label below a drop / above a rise, like TradingView; flip or clamp so it never leaves the chart
+    const top = Math.min(c1.y, c2.y), bottom = Math.max(c1.y, c2.y);
+    let boxY = up ? top - h - 8 : bottom + 8;
+    if (boxY + h > bounding.height - 4) boxY = top - h - 8;
+    const minY = 40;   // keep clear of the OHLC readout at the top
+    if (boxY < minY) boxY = up ? bottom + 8 : top - h - 8;
+    boxY = Math.max(minY, Math.min(bounding.height - h - 4, boxY));
+    const boxX = Math.max(4, Math.min(bounding.width - w - 4, midX - w / 2));
+    const s = { color };
+    return [
+      { type: "rect", ignoreEvent: true, attrs: { x: Math.min(c1.x, c2.x), y: Math.min(c1.y, c2.y), width: Math.abs(c2.x - c1.x), height: Math.abs(c2.y - c1.y) },
+        styles: { style: "fill", color: color + "30" } },
+      { type: "line", ignoreEvent: true, attrs: { coordinates: [{ x: midX, y: c1.y }, { x: midX, y: c2.y }] }, styles: s },
+      { type: "line", ignoreEvent: true, attrs: { coordinates: arrow({ x: midX, y: c1.y }, { x: midX, y: c2.y }) }, styles: s },
+      { type: "line", ignoreEvent: true, attrs: { coordinates: [{ x: c1.x, y: midY }, { x: c2.x, y: midY }] }, styles: s },
+      { type: "line", ignoreEvent: true, attrs: { coordinates: arrow({ x: c1.x, y: midY }, { x: c2.x, y: midY }) }, styles: s },
+      { type: "rect", ignoreEvent: true, attrs: { x: boxX, y: boxY, width: w, height: h }, styles: { style: "fill", color, borderRadius: 5 } },
+      ...lines.map((text, i) => ({ type: "text", ignoreEvent: true,
+        attrs: { x: boxX + w / 2, y: boxY + 9 + i * 19, text, align: "center", baseline: "top" },
+        styles: { color: "#fff", size: 12, family: "'Chivo Mono', monospace", backgroundColor: "transparent",
+                  paddingLeft: 0, paddingRight: 0, paddingTop: 0, paddingBottom: 0 } })),
+    ];
+  },
+});
+
+// ---- chart
+const chart = klinecharts.init("chart");
+chart.setStyles("dark");
+chart.setStyles({
+  grid: { horizontal: { color: "#1a1f25" }, vertical: { color: "#1a1f25" } },
+  candle: {
+    bar: { upColor: UP, downColor: DOWN, noChangeColor: "#7d8793", upBorderColor: UP, downBorderColor: DOWN,
+           noChangeBorderColor: "#7d8793", upWickColor: UP, downWickColor: DOWN, noChangeWickColor: "#7d8793" },
+    priceMark: { last: { upColor: UP, downColor: DOWN } },
+    tooltip: { showRule: "always" },
+  },
+  xAxis: { tickText: { color: "#7d8793" } },
+  yAxis: { tickText: { color: "#7d8793" } },
+});
+chart.setTimezone("Europe/Kyiv");
+chart.setCustomApi({ formatDate: (dtf, ts, f, type) =>
+  klinecharts.utils.formatDate(dtf, ts, type === 0 ? "YYYY-MM-DD HH:mm:ss" : "HH:mm:ss") });
+
+// ruler state: one at a time; a click after it's finished removes it (like TradingView)
+let drawing = false, done = false, magnet = true;
+function clearRuler() {
+  chart.removeOverlay({ name: "ruler" });
+  drawing = done = false;
+  $("ruler").setAttribute("aria-pressed", "false");
+}
+function startRuler() {
+  if (drawing) return;
+  clearRuler();
+  drawing = true;
+  $("ruler").setAttribute("aria-pressed", "true");
+  chart.createOverlay({ name: "ruler", mode: magnet ? "strong_magnet" : "normal", onDrawEnd: () => { drawing = false; done = true; $("ruler").setAttribute("aria-pressed", "false"); } });
+}
+$("ruler").onclick = () => (drawing ? clearRuler() : startRuler());
+$("magnet").onclick = () => {
+  magnet = !magnet;
+  $("magnet").setAttribute("aria-pressed", magnet);
+  if (drawing) { drawing = false; startRuler(); }
+};
+$("chart").addEventListener("pointerdown", () => { if (done) clearRuler(); }, true);
+document.addEventListener("keydown", e => {
+  if (e.target.closest("input, textarea")) return;
+  if (e.key === "Shift" || e.key === "r" || e.key === "R") startRuler();
+  if (e.key === "Escape") clearRuler();
+});
+
+function render() {
+  clearRuler();
+  chart.removeOverlay();
+  const bars = coin.days[date.date];
+  chart.setPriceVolumePrecision(coin.decimals, 0);
+  chart.applyNewData(bars.map(b => ({ timestamp: b[0], open: b[1], high: b[2], low: b[3], close: b[4], volume: b[5] })));
+  const r = bars.find(b => b[0] === date.release);
+  if (r) chart.createOverlay({ name: "verticalStraightLine", lock: true,
+    points: [{ timestamp: r[0], value: r[1] }], styles: { line: { style: "dashed", color: "#d8b45a", dashedValue: [4, 4] } } });
+  fit();
+  document.querySelectorAll(".date").forEach(b => b.setAttribute("aria-pressed", b.dataset.date === date.date));
+  document.querySelectorAll(".coin").forEach(b => b.setAttribute("aria-pressed", b.dataset.coin === coin.name));
+  $("meta").textContent = `MEXC · ${coin.symbol} · 1s · ${date.date.split("-").reverse().join(".")}`;
+}
+function fit() {
+  chart.resize();
+  chart.setBarSpace(Math.max(1, ($("chart").clientWidth - 90) / coin.days[date.date].length));
+}
+
+function renderDates() {
+  $("dates").innerHTML = "";
+  for (const d of DATA.dates) {
+    const m = firstMinute(coin, d);
+    const b = document.createElement("button");
+    b.className = "date"; b.dataset.date = d.date;
+    b.innerHTML = `<span class="d">${d.date.split("-").reverse().join(".")}</span><span class="m">${d.month} report</span>` +
+      (m ? `<span class="mv"><span>15:30 min </span><b class="${m.chg >= 0 ? "upc" : "downc"}">${sign(m.chg, coin.decimals)} (${sign(m.pct)}%)</b></span>` : "");
+    b.onclick = () => { date = d; render(); };
+    $("dates").append(b);
+  }
+}
+for (const c of DATA.coins) {
+  const b = document.createElement("button");
+  b.className = "coin"; b.dataset.coin = c.name;
+  b.innerHTML = `${c.name}<small>${c.symbol} · ${c.leverage}x</small>`;
+  b.onclick = () => { coin = c; renderDates(); render(); };
+  $("coins").append(b);
+}
+renderDates();
+render();
+window.addEventListener("resize", fit);
+</script>
+</body>
+</html>
